@@ -570,14 +570,18 @@
 
   function layout() {
     if (!currentData.length) return;
-    const rect = section.getBoundingClientRect();
-    const width = rect.width;
+    const sectionRect = section.getBoundingClientRect();
     const years = timelineEnd - timelineStart;
     const height = Math.max(900, Math.min(2800, years * 170));
 
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    // Size the SVG first so we can measure its actual width after CSS kicks in.
     svg.style.height = height + 'px';
     section.style.minHeight = height + 'px';
+
+    const svgRect = svg.getBoundingClientRect();
+    const width = svgRect.width;
+
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
 
     const d = buildSinePath(width, height, CURVE_CYCLES);
     trackEl.setAttribute('d', d);
@@ -586,13 +590,17 @@
     const len = glowEl.getTotalLength();
     const centre = width / 2;
 
+    // Offsets so HTML (positioned inside section) lines up with SVG coords.
+    const offX = svgRect.left - sectionRect.left;
+    const offY = svgRect.top  - sectionRect.top;
+
     section.querySelectorAll('.year-tick').forEach(el => {
       const prog = parseFloat(el.dataset.progress);
       if (prog < 0 || prog > 1) { el.style.display = 'none'; return; }
       el.style.display = 'flex';
       const pt = glowEl.getPointAtLength(len * prog);
-      el.style.left = pt.x + 'px';
-      el.style.top  = pt.y + 'px';
+      el.style.left = (pt.x + offX) + 'px';
+      el.style.top  = (pt.y + offY) + 'px';
       if (pt.x < centre) {
         el.classList.add('side-left');
       } else {
@@ -603,8 +611,8 @@
     section.querySelectorAll('.node').forEach(el => {
       const prog = parseFloat(el.dataset.progress);
       const pt = glowEl.getPointAtLength(len * Math.max(0, Math.min(1, prog)));
-      el.style.left = pt.x + 'px';
-      el.style.top  = pt.y + 'px';
+      el.style.left = (pt.x + offX) + 'px';
+      el.style.top  = (pt.y + offY) + 'px';
       const side = pt.x < centre - 10 ? 'left' : pt.x > centre + 10 ? 'right' : 'center';
       el.setAttribute('data-side', side);
     });
