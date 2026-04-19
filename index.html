@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#000000" />
+<title>Nelson Timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+  SHEET COLUMN FORMAT (row 1, exact):
+    year | month | title | category | summary | details | requirements | color
+      year           integer, e.g. 2028
+      month          1–12  (blank defaults to 6 / mid-year)
+      title          short milestone name
+      category       family | home | travel | career | finance | health | other
+      summary        one-line teaser
+      details        paragraph shown in the pop-up
+      requirements   items separated by  |  (pipe)
+      color          optional hex override, e.g. #f97316
+============================================================= -->
+
+<style>
+  :root {
+    --bg:       #000000;
+    --bg-2:     #070707;
+    --ink:      #ffffff;
+    --ink-dim:  #9aa0a6;
+    --ink-faint:#4a4d52;
+
+    --orange:   #f97316;
+    --orange-2: #fb923c;
+    --blue:     #3b82f6;
+    --blue-2:   #60a5fa;
+
+    --family:  #f97316;
+    --home:    #fb923c;
+    --travel:  #60a5fa;
+    --career:  #3b82f6;
+    --finance: #f97316;
+    --health:  #fb923c;
+    --other:   #60a5fa;
+
+    --font-sans:  "Inter", system-ui, -apple-system, sans-serif;
+    --font-serif: "Instrument Serif", Georgia, serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+
+  body {
+    font-family: var(--font-sans);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .bg-wrap {
+    position: fixed; inset: 0; z-index: -1; overflow: hidden;
+    background:
+      radial-gradient(60% 40% at 20% 12%, rgba(249, 115, 22, 0.12), transparent 65%),
+      radial-gradient(60% 45% at 85% 88%, rgba(59, 130, 246, 0.12), transparent 65%),
+      #000;
+  }
+  .bg-wrap::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity: 0.35;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+  }
+
+  .timeline {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: clamp(40px, 6vw, 80px) clamp(16px, 4vw, 40px) 120px;
+  }
+  #pathSvg {
+    width: 100%;
+    display: block;
+    overflow: visible;
+  }
+  #pathSvg .track {
+    fill: none;
+    stroke: rgba(255,255,255,0.07);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 6;
+    stroke-linecap: round;
+  }
+  #pathSvg .glow {
+    fill: none;
+    stroke: url(#lineGrad);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: url(#softGlow);
+  }
+
+  .year-tick {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .year-tick .bar {
+    width: 8px; height: 1px;
+    background: rgba(255,255,255,0.25);
+  }
+  .year-tick .num {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .year-tick.major .num { color: var(--ink-dim); }
+  .year-tick.major .bar { background: rgba(255,255,255,0.4); width: 12px; }
+
+  .node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    padding: 0; border: 0; background: transparent;
+    -webkit-tap-highlight-color: transparent;
+    font-family: inherit;
+    color: inherit;
+  }
+  .node .dot {
+    display: block;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent, var(--orange));
+    box-shadow:
+      0 0 0 4px rgba(0,0,0,0.6),
+      0 0 0 5px var(--accent, var(--orange)),
+      0 0 16px var(--accent, var(--orange));
+    position: relative;
+    transition: transform 0.3s cubic-bezier(0.2,0.9,0.3,1), box-shadow 0.3s;
+  }
+  .node .dot::after {
+    content: '';
+    position: absolute; inset: -10px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent, var(--orange)) 0%, transparent 70%);
+    opacity: 0.35;
+    filter: blur(4px);
+    z-index: -1;
+    transition: opacity 0.3s, inset 0.3s;
+  }
+  .node .label {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 12px);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 170px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.25;
+    letter-spacing: -0.005em;
+    pointer-events: none;
+    white-space: normal;
+  }
+  .node[data-side="left"] .label {
+    top: 50%; left: auto; right: calc(100% + 14px);
+    transform: translateY(-50%);
+    text-align: right;
+  }
+  .node[data-side="right"] .label {
+    top: 50%; left: calc(100% + 14px); right: auto;
+    transform: translateY(-50%);
+    text-align: left;
+  }
+  .node:hover .dot,
+  .node:focus-visible .dot {
+    transform: scale(1.4);
+    box-shadow:
+      0 0 0 4px rgba(0,0,0,0.6),
+      0 0 0 5px var(--accent, var(--orange)),
+      0 0 28px var(--accent, var(--orange));
+  }
+  .node:hover .dot::after { inset: -18px; opacity: 0.6; }
+
+  .node.next .dot { animation: pulse 2.6s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(0,0,0,0.6), 0 0 0 5px var(--accent), 0 0 16px var(--accent); }
+    50%      { box-shadow: 0 0 0 4px rgba(0,0,0,0.6), 0 0 0 5px var(--accent), 0 0 28px var(--accent), 0 0 0 18px rgba(249,115,22,0); }
+  }
+
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    z-index: 100;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+    display: grid; place-items: center;
+    padding: 20px;
+  }
+  .modal-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .modal {
+    position: relative;
+    width: min(560px, 100%);
+    max-height: 88vh;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #0b0b0b, #050505);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 22px;
+    padding: clamp(24px, 4vw, 40px);
+    box-shadow: 0 40px 80px rgba(0,0,0,0.7);
+    transform: translateY(24px) scale(0.98);
+    transition: transform 0.35s cubic-bezier(0.2,0.9,0.3,1.1);
+  }
+  .modal-backdrop.open .modal { transform: none; }
+
+  .modal .accent-bar {
+    height: 3px; width: 44px; border-radius: 2px;
+    background: var(--accent, var(--orange));
+    margin-bottom: 22px;
+    box-shadow: 0 0 12px var(--accent, var(--orange));
+  }
+  .modal .date-line {
+    font-family: var(--font-serif);
+    font-size: clamp(36px, 6vw, 58px);
+    line-height: 1;
+    font-weight: 400;
+    color: var(--ink);
+  }
+  .modal .date-line .mo {
+    color: var(--accent, var(--orange));
+    font-style: italic;
+  }
+  .modal .cat {
+    display: inline-block;
+    margin-top: 16px;
+    font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--accent, var(--orange));
+    padding: 5px 11px;
+    border: 1px solid var(--accent, var(--orange));
+    border-radius: 999px;
+  }
+  .modal h2 {
+    font-family: var(--font-serif);
+    font-size: clamp(26px, 4vw, 34px);
+    line-height: 1.1;
+    font-weight: 400;
+    margin: 18px 0 14px;
+    letter-spacing: -0.01em;
+  }
+  .modal p.details {
+    color: var(--ink-dim);
+    line-height: 1.65;
+    font-size: 15px;
+    margin: 0 0 28px;
+  }
+  .modal h3 {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+    font-weight: 600;
+  }
+  .reqs { list-style: none; padding: 0; margin: 0; }
+  .reqs li {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    margin-bottom: 6px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--ink);
+  }
+  .reqs li::before {
+    content: '';
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    margin-top: 1px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent, var(--orange));
+  }
+  .modal .close {
+    position: absolute; top: 16px; right: 16px;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--ink); font-size: 16px;
+    cursor: pointer; display: grid; place-items: center;
+    transition: background 0.2s, transform 0.2s;
+  }
+  .modal .close:hover { background: rgba(255,255,255,0.1); transform: rotate(90deg); }
+
+  @media (max-width: 640px) {
+    .node .label { max-width: 130px; font-size: 12px; }
+    .node[data-side="left"] .label,
+    .node[data-side="right"] .label {
+      top: calc(100% + 10px); left: 50%; right: auto;
+      transform: translateX(-50%); text-align: center;
+    }
+    .year-tick .num { font-size: 9px; }
+  }
+
+  .modal::-webkit-scrollbar { width: 6px; }
+  .modal::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="bg-wrap" aria-hidden="true"></div>
+
+<main class="timeline" id="timelineSection">
+  <svg id="pathSvg" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stop-color="#f97316"/>
+        <stop offset="50%" stop-color="#fb923c"/>
+        <stop offset="100%" stop-color="#3b82f6"/>
+      </linearGradient>
+      <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge>
+          <feMergeNode in="b"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <path class="track" id="trackPath"></path>
+    <path class="glow"  id="glowPath"></path>
+  </svg>
+  <!-- year ticks and milestone nodes injected here -->
+</main>
+
+<div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" id="modal">
+    <button class="close" id="closeBtn" aria-label="Close">✕</button>
+    <div class="accent-bar" id="accentBar"></div>
+    <div class="date-line"><span class="mo" id="modalMonth"></span> <span id="modalYear"></span></div>
+    <span class="cat" id="modalCat"></span>
+    <h2 id="modalTitle"></h2>
+    <p class="details" id="modalDetails"></p>
+    <h3>What's needed</h3>
+    <ul class="reqs" id="modalReqs"></ul>
+  </div>
+</div>
+
+<script>
+  // ═══════════════════════════════════════════════════════════════
+  // CONFIG
+  // ═══════════════════════════════════════════════════════════════
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1Zi6QbElaSWjMCzry05IALHDLZgKajvVBHCWX4LiknPk/gviz/tq?tqx=out:csv&gid=8509666";
+
+  // Curve shape: number of full sine periods along the path.
+  // Lower = gentler, higher = wavier.
+  const CURVE_CYCLES = 3;
+
+  // ═══════════════════════════════════════════════════════════════
+  // PLACEHOLDERS (used only if the sheet can't be reached)
+  // ═══════════════════════════════════════════════════════════════
+  const PLACEHOLDERS = [
+    { year: 2026, month: 10, title: "The wedding", category: "family",
+      summary: "Say yes, for real.",
+      details: "The big day. Close family, close friends, somewhere the light is good and the food is better.",
+      requirements: ["Lock the venue & date","Sort the guest list","Write the vows early","Book photographer","Honeymoon plan B"] },
+    { year: 2027, month: 6, title: "First home together", category: "home",
+      summary: "Keys in hand.",
+      details: "Not forever, but ours. Room for a dog, a decent kitchen, a spare room.",
+      requirements: ["Build deposit","Credit score above 750","Pre-approval letter","Shortlist neighbourhoods","Building & pest"] },
+    { year: 2028, month: 5, title: "Europe, slowly", category: "travel",
+      summary: "One month, no rush.",
+      details: "A month through Italy, Portugal, and somewhere unexpected.",
+      requirements: ["Bank travel fund","Align annual leave","Renew passports","Book anchor cities","Basic Italian"] },
+    { year: 2030, month: 3, title: "A small human", category: "family",
+      summary: "Family of three.",
+      details: "If the timing cooperates, our first child.",
+      requirements: ["Health check-ups","Parental leave plan","6-month cushion","Space prepped","Support network"] },
+    { year: 2032, month: 9, title: "The business", category: "career",
+      summary: "Launch something of our own.",
+      details: "A small, profitable venture with both of us invested.",
+      requirements: ["Validated idea","Seed savings","Legal entity","First hires mapped","Exit criteria"] },
+    { year: 2036, month: 6, title: "The forever home", category: "home",
+      summary: "The one we don't leave.",
+      details: "Upgrade to the home we raise the kids in.",
+      requirements: ["$400k+ equity","School zone research","Sell current home","Renovation budget","Move smoothly"] },
+    { year: 2040, month: 1, title: "Financial independence", category: "finance",
+      summary: "Work by choice, not need.",
+      details: "Net worth that covers our lifestyle indefinitely.",
+      requirements: ["Target $3M+","Diversified 60/30/10","Debt-free home","Succession plan","Annual review"] },
+    { year: 2041, month: 10, title: "15 years, together", category: "travel",
+      summary: "The anniversary we planned 15 years ago.",
+      details: "Back to where we got married. No kids for a week.",
+      requirements: ["Book the place","Kids with grandparents","Letters to open","No work calls","Plan the next 15"] }
+  ];
+
+  // ═══════════════════════════════════════════════════════════════
+  // CSV parser
+  // ═══════════════════════════════════════════════════════════════
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"') { inQuotes = true; }
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else if (c === '\r') { /* ignore */ }
+        else { field += c; }
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    if (!rows.length) return [];
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    return rows.slice(1)
+      .filter(r => r.some(v => v && v.trim().length))
+      .map(r => {
+        const o = {};
+        headers.forEach((h, i) => o[h] = (r[i] ?? '').trim());
+        return o;
+      });
+  }
+
+  function normalizeRow(r) {
+    const m = parseInt(r.month, 10);
+    return {
+      year: parseInt(r.year, 10),
+      month: (!isNaN(m) && m >= 1 && m <= 12) ? m : 6,
+      title: r.title || 'Untitled',
+      category: (r.category || 'other').toLowerCase(),
+      summary: r.summary || '',
+      details: r.details || '',
+      requirements: (r.requirements || '').split('|').map(s => s.trim()).filter(Boolean),
+      color: (r.color || '').trim() || null
+    };
+  }
+
+  async function loadData() {
+    if (!SHEET_CSV_URL) return PLACEHOLDERS;
+    try {
+      const res = await fetch(SHEET_CSV_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const data = parseCSV(text).map(normalizeRow).filter(d => !isNaN(d.year));
+      return data.length ? data : PLACEHOLDERS;
+    } catch (err) {
+      console.warn('Sheet fetch failed, using placeholders:', err);
+      return PLACEHOLDERS;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // date helpers
+  // ═══════════════════════════════════════════════════════════════
+  const dateFrac = (y, m) => y + (m - 1) / 12;
+  const MONTH_NAMES = ["January","February","March","April","May","June",
+                       "July","August","September","October","November","December"];
+
+  const cs = getComputedStyle(document.documentElement);
+  const CAT = {
+    family:  cs.getPropertyValue('--family').trim(),
+    home:    cs.getPropertyValue('--home').trim(),
+    travel:  cs.getPropertyValue('--travel').trim(),
+    career:  cs.getPropertyValue('--career').trim(),
+    finance: cs.getPropertyValue('--finance').trim(),
+    health:  cs.getPropertyValue('--health').trim(),
+    other:   cs.getPropertyValue('--other').trim()
+  };
+  const colorFor = (m) => m.color || CAT[m.category] || CAT.other;
+
+  const section = document.getElementById('timelineSection');
+  const svg     = document.getElementById('pathSvg');
+  const trackEl = document.getElementById('trackPath');
+  const glowEl  = document.getElementById('glowPath');
+
+  function buildSinePath(width, height, cycles) {
+    const topPad = 60;
+    const botPad = 60;
+    const usableH = height - topPad - botPad;
+    const amp = Math.min(width * 0.32, 260);
+    const cx = width / 2;
+    const samples = 400;
+    let d = '';
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      const y = topPad + t * usableH;
+      const x = cx + amp * Math.sin(t * cycles * 2 * Math.PI);
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+    }
+    return d;
+  }
+
+  let currentData = [];
+  let timelineStart = 0, timelineEnd = 0;
+  let resizeRaf = null;
+
+  function computeRange(data) {
+    if (!data.length) { timelineStart = 2026; timelineEnd = 2041; return; }
+    const starts = data.map(d => dateFrac(d.year, d.month));
+    const minD = Math.min.apply(null, starts);
+    const maxD = Math.max.apply(null, starts);
+    timelineStart = Math.floor(minD);
+    timelineEnd   = Math.ceil(maxD + 0.0001);
+    if (timelineEnd - timelineStart < 1) timelineEnd = timelineStart + 1;
+  }
+
+  function progressFor(y, m) {
+    return (dateFrac(y, m) - timelineStart) / (timelineEnd - timelineStart);
+  }
+
+  function layout() {
+    if (!currentData.length) return;
+    const rect = section.getBoundingClientRect();
+    const width = rect.width;
+    const years = timelineEnd - timelineStart;
+    const height = Math.max(900, Math.min(2800, years * 170));
+
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.style.height = height + 'px';
+    section.style.minHeight = height + 'px';
+
+    const d = buildSinePath(width, height, CURVE_CYCLES);
+    trackEl.setAttribute('d', d);
+    glowEl.setAttribute('d', d);
+
+    const len = glowEl.getTotalLength();
+    const centre = width / 2;
+
+    section.querySelectorAll('.year-tick').forEach(el => {
+      const prog = parseFloat(el.dataset.progress);
+      if (prog < 0 || prog > 1) { el.style.display = 'none'; return; }
+      el.style.display = 'flex';
+      const pt = glowEl.getPointAtLength(len * prog);
+      el.style.left = pt.x + 'px';
+      el.style.top  = pt.y + 'px';
+      const isRight = pt.x > centre + 4;
+      const isLeft  = pt.x < centre - 4;
+      if (!isRight && !isLeft) {
+        el.style.flexDirection = 'column';
+      } else {
+        el.style.flexDirection = isRight ? 'row' : 'row-reverse';
+      }
+    });
+
+    section.querySelectorAll('.node').forEach(el => {
+      const prog = parseFloat(el.dataset.progress);
+      const pt = glowEl.getPointAtLength(len * Math.max(0, Math.min(1, prog)));
+      el.style.left = pt.x + 'px';
+      el.style.top  = pt.y + 'px';
+      const side = pt.x < centre - 10 ? 'left' : pt.x > centre + 10 ? 'right' : 'center';
+      el.setAttribute('data-side', side);
+    });
+  }
+
+  function render(data) {
+    currentData = data.slice()
+      .filter(d => !isNaN(d.year))
+      .sort((a,b) => dateFrac(a.year, a.month) - dateFrac(b.year, b.month));
+
+    computeRange(currentData);
+
+    section.querySelectorAll('.node, .year-tick').forEach(el => el.remove());
+
+    for (let y = timelineStart; y <= timelineEnd; y++) {
+      const progress = (y - timelineStart) / (timelineEnd - timelineStart);
+      const tick = document.createElement('div');
+      const isMajor = (y % 5 === 0);
+      tick.className = 'year-tick' + (isMajor ? ' major' : '');
+      tick.dataset.progress = progress;
+      tick.innerHTML = '<span class="bar"></span><span class="num">' + y + '</span>';
+      section.appendChild(tick);
+    }
+
+    const now = new Date();
+    const nowFrac = dateFrac(now.getFullYear(), now.getMonth() + 1);
+    const nextIdx = currentData.findIndex(d => dateFrac(d.year, d.month) >= nowFrac);
+
+    currentData.forEach((m, i) => {
+      const el = document.createElement('button');
+      el.className = 'node' + (i === nextIdx ? ' next' : '');
+      el.type = 'button';
+      el.style.setProperty('--accent', colorFor(m));
+      el.dataset.progress = progressFor(m.year, m.month);
+      el.setAttribute('aria-label', MONTH_NAMES[m.month-1] + ' ' + m.year + ' — ' + m.title);
+      el.innerHTML = '<span class="dot"></span><span class="label">' + escapeHtml(m.title) + '</span>';
+      el.addEventListener('click', () => openModal(m));
+      section.appendChild(el);
+    });
+
+    layout();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  const backdrop = document.getElementById('modalBackdrop');
+  const closeBtn = document.getElementById('closeBtn');
+  function openModal(m) {
+    const c = colorFor(m);
+    document.getElementById('accentBar').style.background = c;
+    document.getElementById('accentBar').style.boxShadow = '0 0 14px ' + c;
+    document.getElementById('modalMonth').textContent = MONTH_NAMES[m.month-1];
+    document.getElementById('modalMonth').style.color = c;
+    document.getElementById('modalYear').textContent = m.year;
+    const catEl = document.getElementById('modalCat');
+    catEl.textContent = m.category;
+    catEl.style.color = c;
+    catEl.style.borderColor = c;
+    document.getElementById('modalTitle').textContent = m.title;
+    document.getElementById('modalDetails').textContent = m.details || m.summary;
+
+    const reqs = document.getElementById('modalReqs');
+    reqs.innerHTML = '';
+    (m.requirements.length ? m.requirements : ['(no requirements listed yet)']).forEach(r => {
+      const li = document.createElement('li');
+      li.textContent = r;
+      li.style.setProperty('--accent', c);
+      reqs.appendChild(li);
+    });
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal() {
+    backdrop.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  closeBtn.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(layout);
+  });
+
+  loadData().then(render);
+</script>
+</body>
+</html>
